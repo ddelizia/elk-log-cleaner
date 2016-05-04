@@ -1,0 +1,12 @@
+{
+  "elasticsearch": {
+    "schema": "http",
+    "host": "localhost",
+    "port": 9200
+  },
+  "logstash":{
+    "indexPrefix": "logstash-",
+    "keepLatestDays": 7
+  },
+  "cronExpr" : "0 1 * * * *"
+}

@@ -1,56 +1,102 @@
-var CronJob = require('cron').CronJob;
-var request = require('request');
-var moment = require('moment');
-var conf = require('nconf');
+const conf = require('nconf');
+const {CronJob} = require('cron');
+const logger = require('./logger');
+const moment = require('moment');
+const pSettle = require('p-settle');
+const request = require('request-promise-native');
 
 conf
   .env()
   .argv()
-  .file({ file: 'config.json' });
+  .file({'file': 'config.json'});
 
-var elasticSearchSchema = conf.get('elasticsearch:schema');
-var elasticSearchHost = conf.get('elasticsearch:host');
-var elasticSearchPort = conf.get('elasticsearch:port');
-var logstashPrefix = conf.get('logstash:indexPrefix');
-var logstashDaystokeep = conf.get('logstash:keepLatestDays');
-var cronExpr = conf.get('cronExpr');
+const elasticSearchSchema = conf.get('elasticsearch:schema');
+const elasticSearchHost = conf.get('elasticsearch:host');
+const elasticSearchPort = conf.get('elasticsearch:port');
+const logstashPrefix = conf.get('logstash:indexPrefix');
+const logstashDaystokeep = conf.get('logstash:keepLatestDays');
+const cronExpr = conf.get('cronExpr');
 
-console.log("Running for: " + elasticSearchSchema + '://' + elasticSearchHost + ':' + elasticSearchPort);
-console.log("Cleaning logs for prefix: \"" + logstashPrefix + '\" older than ' + logstashDaystokeep + " day(s)");
-console.log("Cron expr: "+ cronExpr);
+/**
+ * Format the ES url
+ * @return {String}
+ */
+function baseUrl () {
+  return `${elasticSearchSchema}://${elasticSearchHost}:${elasticSearchPort}`;
+}
 
-new CronJob(cronExpr, function() {
-  console.log("Running cronjob at: " + new Date());
-  request.get(baseUrl() + "/_stats/index?pretty", function (error, response, body){
-      var indices = (JSON.parse(body)).indices;
-      var keys = Object.keys(indices);
+/**
+ * Delete the indices
+ * @param  {[type]} indices [description]
+ * @return {[type]}         [description]
+ */
+async function deleteIndices (indices) {
+  const promises = indices.map(indice => request.delete(`${baseUrl()}/${indice}`));
+  const results = await pSettle(promises);
 
-      var now = moment();
-      var timeLimit = now.subtract(logstashDaystokeep, 'days');
+  const isRejected = results.filter(result => result.isRejected);
+  const isFulfilled = results.filter(result => result.isFulfilled);
 
-      keys.forEach(function (key) {
+  // we log all rejected widget with reason
+  if (isRejected.length) {
+    isRejected.forEach(item => {
+      logger.error(item.reason);
+    });
+  }
 
-        if (key.startsWith(logstashPrefix)){
+  // we log all rejected widget with reason
+  if (isFulfilled.length) {
+    logger.info(`${isFulfilled.length} indices deleted on ${results.length}`);
+  }
+}
 
-          var date = key.replace(logstashPrefix, "")
+/**
+ * Clean ES given indices
+ */
+async function clean () {
+  logger.info(`running cron job at: ${new Date()}`);
 
-          console.log(key + "," + date);
+  try {
+    const body = await request.get(baseUrl() + '/_stats/indexing?pretty');
+    const {indices} = JSON.parse(body);
+    const keys = Object.keys(indices);
+    const now = moment();
+    const timeLimit = now.subtract(logstashDaystokeep, 'days');
 
-          var realDate = moment(date, "YYYY.MM.DDDD");
+    const indicesToDelete = keys.filter(key => {
+      if (key.startsWith(logstashPrefix)) {
+        const date = key.replace(logstashPrefix, '');
+        const realDate = moment(date, 'YYYY.MM.DD');
 
-          if (realDate.isBefore(timeLimit)){
-            console.log("Deleting index " + key);
-
-            request.delete(baseUrl() + "/" + key);
-          }
-
-
+        if (realDate.isBefore(timeLimit)) {
+          return true;
         }
-      });
-  });
-}, null, true);
+      }
 
+      return false;
+    });
 
-var baseUrl = function (){
-  return "" + elasticSearchSchema + "://" + elasticSearchHost + ":" + elasticSearchPort;
+    logger.info(`${indicesToDelete.length} indices on ${keys.length} to delete...`);
+    logger.info(JSON.stringify(indicesToDelete, null, 2));
+    deleteIndices(indicesToDelete);
+  } catch (e) {
+    logger.error(e.error || e);
+  }
+}
+
+logger.verbose(`running for: ${baseUrl()}`);
+logger.verbose(
+  `cleaning logs for prefix: "${logstashPrefix}" older than ${logstashDaystokeep} day(s)`
+);
+logger.verbose(`the cron expression is ${cronExpr}`);
+
+try {
+  clean();
+  //const job = new CronJob(cronExpr, clean, null, false);
+
+  //console.log(job.nextDate());
+
+  //job.start();
+} catch (error) {
+  console.log(error);
 }

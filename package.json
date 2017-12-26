@@ -13,6 +13,9 @@
     "cron": "^1.3.0",
     "moment": "^2.20.1",
     "nconf": "^0.10.0",
-    "request": "^2.83.0"
+    "p-settle": "^2.0.0",
+    "request": "^2.83.0",
+    "request-promise-native": "^1.0.5",
+    "winston": "^2.4.0"
   }
 }

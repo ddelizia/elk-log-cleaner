@@ -17,6 +17,8 @@ const logstashPrefix = conf.get('logstash:indexPrefix');
 const logstashDaystokeep = conf.get('logstash:keepLatestDays');
 const cronExpr = conf.get('cronExpr');
 
+let job;
+
 /**
  * Format the ES url
  * @return {String}
@@ -27,8 +29,7 @@ function baseUrl () {
 
 /**
  * Delete the indices
- * @param  {[type]} indices [description]
- * @return {[type]}         [description]
+ * @param  {Array} indices
  */
 async function deleteIndices (indices) {
   const promises = indices.map(indice => request.delete(`${baseUrl()}/${indice}`));
@@ -76,9 +77,14 @@ async function clean () {
       return false;
     });
 
-    logger.info(`${indicesToDelete.length} indices on ${keys.length} to delete...`);
-    logger.info(JSON.stringify(indicesToDelete, null, 2));
-    deleteIndices(indicesToDelete);
+    if (indicesToDelete.length > 0) {
+      logger.info(`${indicesToDelete.length} indices on ${keys.length} to delete...`);
+      logger.info(JSON.stringify(indicesToDelete, null, 2));
+      deleteIndices(indicesToDelete);
+    }
+
+    logger.warn(`any indices on ${keys.length} available to delete...`);
+    logger.info(`next clean: ${job.nextDate()}`);
   } catch (e) {
     logger.error(e.error || e);
   }
@@ -91,12 +97,11 @@ logger.verbose(
 logger.verbose(`the cron expression is ${cronExpr}`);
 
 try {
-  clean();
-  //const job = new CronJob(cronExpr, clean, null, false);
+  job = new CronJob(cronExpr, clean, null, false);
 
-  //console.log(job.nextDate());
+  logger.info(`next clean: ${job.nextDate()}`);
 
-  //job.start();
+  job.start();
 } catch (error) {
-  console.log(error);
+  logger.error(error);
 }

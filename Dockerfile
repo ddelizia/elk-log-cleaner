@@ -1,4 +1,4 @@
-FROM node:6
+FROM node:9
 COPY . /usr/src/app/
 RUN cd /usr/src/app/ && npm install
 

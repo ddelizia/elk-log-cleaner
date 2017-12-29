@@ -1,4 +1,4 @@
-* [`0.1`, `latest` (Dockerfile)](https://bitbucket.org/ddelizia/elk-log-cleaner/raw/master/Dockerfile)
+* [`0.0.1`, `latest` (Dockerfile)](https://bitbucket.org/ddelizia/elk-log-cleaner/raw/master/Dockerfile)
 
 # elk-log-cleaner
 
